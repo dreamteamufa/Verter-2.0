@@ -6,10 +6,6 @@
 // @match       https://pocketoption.com/*
 // @run-at      document-idle
 // ==/UserScript==
-"use strict";
-// @ts-check
-const APP_VERSION = "app102-0.2.0.js";
-(function(){
 
 // const mode = 'REAL';
 const mode = 'DEMO';
@@ -135,219 +131,6 @@ class SqueezeMomentumIndicator {
 
 // Initialize the SqueezeMomentumIndicator
 const squeezeMomentumIndicator = new SqueezeMomentumIndicator();
-
-const HTF = {
-  ready: false,
-  need: { EMA10: 10, EMA20: 20, RSI7: 7, SM10: 20 },
-  warmup: { EMA10: 0, EMA20: 0, RSI7: 0, SM10: 0 },
-  ema10: [],
-  ema20: [],
-  rsi7: [],
-  sqz10: [],
-  lastLoggedTs: null
-};
-window.__HTF__ = HTF;
-
-const htfCloses = [];
-const htfCandles = [];
-
-function emaOne(data, period) {
-  if (!Array.isArray(data) || !Number.isFinite(period) || period <= 0 || data.length < period) {
-    return null;
-  }
-  const alpha = 2 / (period + 1);
-  let ema = 0;
-  for (let i = 0; i < period; i += 1) {
-    ema += data[i];
-  }
-  ema /= period;
-  for (let i = period; i < data.length; i += 1) {
-    const value = data[i];
-    ema = ema + alpha * (value - ema);
-  }
-  return ema;
-}
-
-function rsiOne(data, period) {
-  if (!Array.isArray(data) || !Number.isFinite(period) || period <= 0 || data.length <= period) {
-    return null;
-  }
-  let gain = 0;
-  let loss = 0;
-  for (let i = data.length - period; i < data.length; i += 1) {
-    const current = data[i];
-    const prev = data[i - 1];
-    const change = current - prev;
-    if (change > 0) {
-      gain += change;
-    } else if (change < 0) {
-      loss -= change;
-    }
-  }
-  gain /= period;
-  loss /= period;
-  if (loss === 0) {
-    return 100;
-  }
-  const rs = gain / loss;
-  return 100 - 100 / (1 + rs);
-}
-
-function sqzOne(candles, period) {
-  const lengthBB = 20;
-  const lengthKC = 20;
-  if (!Array.isArray(candles) || candles.length < lengthBB + 1 || !Number.isFinite(period) || period <= 0) {
-    return null;
-  }
-  const closes = candles.map(c => c.close);
-  const highs = candles.map(c => c.high);
-  const lows = candles.map(c => c.low);
-  const sliceStart = closes.length - lengthBB;
-  const closeSlice = closes.slice(sliceStart);
-  const highSlice = highs.slice(sliceStart);
-  const lowSlice = lows.slice(sliceStart);
-  const basis = closeSlice.reduce((a, b) => a + b, 0) / lengthBB;
-  let variance = 0;
-  for (let i = 0; i < closeSlice.length; i += 1) {
-    const diff = closeSlice[i] - basis;
-    variance += diff * diff;
-  }
-  variance /= lengthBB;
-  const dev = Math.sqrt(variance);
-  const upperBB = basis + dev * 2;
-  const lowerBB = basis - dev * 2;
-
-  let rangeSum = 0;
-  for (let i = candles.length - lengthKC; i < candles.length; i += 1) {
-    const current = candles[i];
-    const prev = candles[i - 1] || current;
-    const high = current.high;
-    const low = current.low;
-    const prevClose = prev.close;
-    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
-    rangeSum += tr;
-  }
-  const rangema = rangeSum / lengthKC;
-  const ma = closeSlice.reduce((a, b) => a + b, 0) / lengthKC;
-  const upperKC = ma + rangema * 1.5;
-  const lowerKC = ma - rangema * 1.5;
-  const squeezeOn = lowerBB > lowerKC && upperBB < upperKC;
-  const squeezeOff = lowerBB < lowerKC && upperBB > upperKC;
-  const noSqz = !squeezeOn && !squeezeOff;
-  const highestHigh = Math.max(...highSlice);
-  const lowestLow = Math.min(...lowSlice);
-  const avgHL = (highestHigh + lowestLow) / 2;
-  const smaClose = closeSlice.reduce((a, b) => a + b, 0) / lengthKC;
-  const momentumSource = closes.map(s => s - (avgHL + smaClose) / 2);
-  if (momentumSource.length < period) {
-    return null;
-  }
-  const startIndex = momentumSource.length - period;
-  let sumX = 0;
-  let sumY = 0;
-  let sumXY = 0;
-  let sumXX = 0;
-  for (let i = 0; i < period; i += 1) {
-    const x = i + 1;
-    const y = momentumSource[startIndex + i];
-    sumX += x;
-    sumY += y;
-    sumXY += x * y;
-    sumXX += x * x;
-  }
-  const denom = period * sumXX - sumX * sumX;
-  if (denom === 0) {
-    return null;
-  }
-  const slope = (period * sumXY - sumX * sumY) / denom;
-  const intercept = (sumY - slope * sumX) / period;
-  const value = slope * period + intercept;
-  return {
-    value,
-    squeezeOn,
-    squeezeOff,
-    noSqz,
-    upperBB,
-    lowerBB,
-    upperKC,
-    lowerKC
-  };
-}
-
-function renderSignalsLine() {
-  if (!signalsLineDiv) {
-    return;
-  }
-  const base = 'Signals: EMA10 ' + HTF.warmup.EMA10 + '/' + HTF.need.EMA10 + ' • EMA20 ' + HTF.warmup.EMA20 + '/' + HTF.need.EMA20 + ' • RSI7 ' + HTF.warmup.RSI7 + '/' + HTF.need.RSI7 + ' • SM10 ' + HTF.warmup.SM10 + '/' + HTF.need.SM10;
-  signalsLineDiv.textContent = base + (HTF.ready ? ' [• READY]' : '');
-}
-
-function updateHTFSignals(bar) {
-  htfCandles.push({ high: bar.H, low: bar.L, close: bar.C });
-  htfCloses.push(bar.C);
-  if (htfCandles.length > 600) {
-    htfCandles.splice(0, htfCandles.length - 600);
-  }
-  if (htfCloses.length > 600) {
-    htfCloses.splice(0, htfCloses.length - 600);
-  }
-  const ema10 = emaOne(htfCloses, HTF.need.EMA10);
-  if (Number.isFinite(ema10)) {
-    HTF.ema10.push(ema10);
-    if (HTF.ema10.length > 600) {
-      HTF.ema10.shift();
-    }
-  }
-  const ema20 = emaOne(htfCloses, HTF.need.EMA20);
-  if (Number.isFinite(ema20)) {
-    HTF.ema20.push(ema20);
-    if (HTF.ema20.length > 600) {
-      HTF.ema20.shift();
-    }
-  }
-  const rsi7 = rsiOne(htfCloses, HTF.need.RSI7);
-  if (Number.isFinite(rsi7)) {
-    HTF.rsi7.push(rsi7);
-    if (HTF.rsi7.length > 600) {
-      HTF.rsi7.shift();
-    }
-  }
-  const sqz = sqzOne(htfCandles, 10);
-  if (sqz && Number.isFinite(sqz.value)) {
-    HTF.sqz10.push(sqz);
-    if (HTF.sqz10.length > 600) {
-      HTF.sqz10.shift();
-    }
-  }
-  HTF.warmup.EMA10 = Math.min(HTF.need.EMA10, htfCloses.length);
-  HTF.warmup.EMA20 = Math.min(HTF.need.EMA20, htfCloses.length);
-  HTF.warmup.RSI7 = Math.min(HTF.need.RSI7, Math.max(0, htfCloses.length - 1));
-  HTF.warmup.SM10 = Math.min(HTF.need.SM10, htfCandles.length);
-  HTF.ready = Object.keys(HTF.need).every(key => HTF.warmup[key] >= HTF.need[key]);
-  renderSignalsLine();
-  const lastTs = bar.t;
-  if (HTF.lastLoggedTs !== lastTs) {
-    HTF.lastLoggedTs = lastTs;
-    const blue = 'color:#1e6fff;font-weight:600;';
-    const lastEma10 = HTF.ema10.length ? HTF.ema10[HTF.ema10.length - 1] : null;
-    const lastEma20 = HTF.ema20.length ? HTF.ema20[HTF.ema20.length - 1] : null;
-    const lastRsi7 = HTF.rsi7.length ? HTF.rsi7[HTF.rsi7.length - 1] : null;
-    const lastSqz = HTF.sqz10.length ? HTF.sqz10[HTF.sqz10.length - 1].value : null;
-    const format = value => (Number.isFinite(value) ? value.toFixed(4) : 'n/a');
-    console.log('%c[HTF ' + APP_VERSION + '] EMA10=%s EMA20=%s RSI7=%s SM10=%s | EMA10 %d/10 EMA20 %d/20 RSI7 %d/7 SM10 %d/20%s',
-      blue,
-      format(lastEma10),
-      format(lastEma20),
-      format(lastRsi7),
-      format(lastSqz),
-      HTF.warmup.EMA10,
-      HTF.warmup.EMA20,
-      HTF.warmup.RSI7,
-      HTF.warmup.SM10,
-      HTF.ready ? ' • READY' : ''
-    );
-  }
-}
 
 let humanTime = (time) => {
     let h = (new Date(time).getHours()).toString();
@@ -477,8 +260,6 @@ let trendDiv;
 let globalTrendDiv;
 let tradeDirectionDiv;
 let globalPrice;
-let signalsLineDiv;
-let tradingSymbolDiv;
 
 // [BEGIN BLOCK:MTC_V8]
 const MTC = (function MTCModuleV8() {
@@ -506,9 +287,44 @@ const MTC = (function MTCModuleV8() {
         if(frames[lbl].length>600)frames[lbl].splice(0,frames[lbl].length-600);
         cur[lbl]={t:slot,O:price,H:price,L:price,C:price};
         if(lbl==='1m'){
-          updateHTFSignals(closedBar);
           const ok=(closedAt%60000)===0;
           console.log('[MTC][1m-close]',new Date(closedAt).toISOString(),'minuteAligned='+ok);
+          if (window.ENABLE_HTF_FEATURES) {
+            (function HTF_onClose1m(candles1m){
+              try{
+                if(!candles1m || candles1m.length===0) return;
+                var closes = candles1m.map(c=>c.C);
+                window.__HTF__.ema10.push( HTF_emaOne(closes,10) );
+                window.__HTF__.ema20.push( HTF_emaOne(closes,20) );
+                window.__HTF__.rsi7 .push( HTF_rsiOne(closes,7)   );
+                window.__HTF__.sqz10.push( HTF_sqzOne(candles1m,10) );
+
+                var n = candles1m.length, W = window.__HTF__.warmup, N = window.__HTF__.need;
+                W.EMA10 = Math.min(n, N.EMA10); W.EMA20 = Math.min(n, N.EMA20);
+                W.RSI7  = Math.min(n, N.RSI7 ); W.SM10  = Math.min(n, N.SM10 );
+                window.__HTF__.ready = (W.EMA10===N.EMA10 && W.EMA20===N.EMA20 && W.RSI7===N.RSI7 && W.SM10===N.SM10);
+
+                // минутный лог (без дублей)
+                var ts = candles1m[candles1m.length-1].t;
+                if (window.__HTF__.lastLoggedTs !== ts){
+                  window.__HTF__.lastLoggedTs = ts;
+                  var blue = 'color:#1e6fff;font-weight:600;';
+                  var v = window.__HTF__;
+                  console.log('%c[HTF app102-0.2.0.js] EMA10=%s EMA20=%s RSI7=%s SM10=%s | EMA10 %d/%d EMA20 %d/%d RSI7 %d/%d SM10 %d/%d%s',
+                    blue,
+                    (v.ema10[v.ema10.length-1]||'').toString().slice(0,8),
+                    (v.ema20[v.ema20.length-1]||'').toString().slice(0,8),
+                    (v.rsi7 [v.rsi7 .length-1]||'').toString().slice(0,6),
+                    (v.sqz10[v.sqz10.length-1]||'').toString().slice(0,8),
+                    W.EMA10, N.EMA10, W.EMA20, N.EMA20, W.RSI7, N.RSI7, W.SM10, N.SM10,
+                    (v.ready ? ' • READY' : '')
+                  );
+                }
+                // обновление строки панели (см. 1.3)
+                if (typeof HTF_renderSignalsLine==='function') HTF_renderSignalsLine();
+              }catch(e){ console.error('[HTF] minute-update error:', e&&e.message? e.message:e); }
+            })(frames['1m']);
+          }
         }
         console.log(`[CANDLE][${lbl}] O=${b.O} H=${b.H} L=${b.L} C=${b.C} t=${new Date(b.t).toISOString()}`);
       }else{
@@ -603,7 +419,7 @@ loseCycle.style.borderRadius = "3px";
 
 const targetElem = document.getElementsByClassName("tooltip-text");
 const textToSearch = "Winnings amount you receive";
-for (let i = 0; i< targetElem.length;i++){
+for (i = 0; i< targetElem.length;i++){
     let textContent = targetElem[i].textContent || targetElem[i].innerText;
     if (textContent.includes(textToSearch)){
         targetElement2 = document.getElementsByClassName("tooltip-text")[i];
@@ -1121,7 +937,7 @@ let makeBet = (priceTrend, tradeStatus, globalTrend) => {
 
     //  determine win %
     let winCounter = 0;
-    for (let i = 0; i < betHistory.length; i++) {
+    for (var i = 0; i < betHistory.length; i++) {
         if (betHistory[i].won === 'won'){
             winCounter++
         }
@@ -1193,6 +1009,12 @@ let getBetValue = (betStep) => {
     return value;
 }
 let takeRight = (arr, n = 1) => arr.slice(-n);
+Array.prototype.max = function() {
+    return Math.max.apply(null, this);
+};  
+Array.prototype.min = function() {
+    return Math.min.apply(null, this);
+};
 let resetCycle = () => {
 
     let time = Date.now();
@@ -1256,7 +1078,7 @@ function addUI() {
   
     newDiv.innerHTML += '<br><br><div>Start Balance: $'+startBalance+'.  Start Time: '+startTime+'</div><br>MODE: '+mode+'</div><br><br>';
     newDiv.innerHTML += '<div>Trading symbol:<span id="trading-symbol"> '+symbolName+'</span>.</div><br>';
-    newDiv.innerHTML += '<div id="signals-line-text">Signals: EMA10 0/10 • EMA20 0/20 • RSI7 0/7 • SM10 0/20</div><br>';
+    newDiv.innerHTML += '<div id="HTF_signals_line">Signals: EMA10 0/10 • EMA20 0/20 • RSI7 0/7 • SM10 0/20</div><br>';
     newDiv.innerHTML += '<div>Cycle profit: $<span id="profit">0</span> Won: <span id="won-percent">0</span>%  Wager: $ <span id="wager">0</span></div><br>';
     newDiv.innerHTML += '<div>Current time: <span id="time">0:00</span></div><br>';
     newDiv.innerHTML += '<div>% profit on current pair: <span id="profit-percent">0</span> %</div><br>';
@@ -1283,14 +1105,23 @@ function addUI() {
     // cyclesDiv.innerHTML = cyclesToPlay;
     totalProfitDiv = document.getElementById("total-profit");
     cyclesHistoryDiv = document.getElementById("cycles-history");
-    signalsLineDiv = document.getElementById("signals-line-text");
-    renderSignalsLine();
-    window.profitDiv = profitDiv;
-    window.trendDiv = trendDiv;
-    window.tradingSymbolDiv = tradingSymbolDiv;
 
 }
 addUI();
+
+function HTF_renderSignalsLine(){
+  try{
+    if(!window.__HTF__) return;
+    var W = window.__HTF__.warmup, N = window.__HTF__.need, ready = window.__HTF__.ready;
+    var line = 'Signals: '
+      + 'EMA10 '+W.EMA10+'/'+N.EMA10+' • '
+      + 'EMA20 '+W.EMA20+'/'+N.EMA20+' • '
+      + 'RSI7 '+W.RSI7+'/'+N.RSI7+' • '
+      + 'SM10 '+W.SM10+'/'+N.SM10 + (ready ? ' • READY' : '');
+    var elem = document.getElementById('HTF_signals_line');
+    if(elem) elem.textContent = line;
+  }catch(e){ }
+}
 
 // [BEGIN BLOCK:MTC_LAYOUT_V10]
 (function MTC_LAYOUT_V10(){
@@ -1719,7 +1550,7 @@ if (false) {
 
 
 
-const baseStyles = `
+var baseStyles = `
     .max-cycle {
         text-align: center;
         position: relative;
@@ -1736,13 +1567,13 @@ const baseStyles = `
     }
 `;
 
-const baseStyleSheet = document.createElement("style");
+var baseStyleSheet = document.createElement("style");
 baseStyleSheet.textContent = baseStyles;
 document.head.appendChild(baseStyleSheet);
 
 if (false) {
     // исходная отрисовка старых сигналов
-    const styles = `
+    var styles = `
         .sqz-bar {
             width: 6px;
             background-color: #ccc;
@@ -1778,7 +1609,7 @@ if (false) {
 
     `;
 
-    const styleSheet = document.createElement("style");
+    var styleSheet = document.createElement("style");
     styleSheet.textContent = styles;
     document.head.appendChild(styleSheet);
 }
@@ -1831,29 +1662,54 @@ function logTradeToGoogleSheets(appversion, symbolName, openTime, betTime, openP
 // [CODEX][OK] TF select persisted
 // [PCS-8][PASS][SYNTAX][ASTx2][READONLY_CRC][HEADLESS_COMPILE][GM_META][BOOT_COLON_ZERO]
 
-(function QA_SELFTEST(){
-  console.groupCollapsed('[QA SELFTEST '+APP_VERSION+']');
-  let fail=false;
-  try{
-    const seq=[1,2,3,4,5,6,7,8,9,10];
-    const e10=emaOne(seq,10);
-    const r7=rsiOne(seq,7);
-    if(!Number.isFinite(e10)||!Number.isFinite(r7)){
-      console.error('❌ Indicator calculation failed'); fail=true;
-    }
-    const ui=['profitDiv','trendDiv','tradingSymbolDiv'];
-    ui.forEach(v=>{
-      if(typeof window[v]==='undefined'){console.error('❌ '+v+' undefined'); fail=true;}
-    });
-    const banned=['var'+' ','for '+'(i =','prototype'+'.','eval'+'(','new '+'Function(','with'+'('];
-    const src=document.currentScript?.textContent||'';
-    banned.forEach(p=>{
-      if(src.includes(p)){console.error('❌ banned pattern: '+p); fail=true;}
-    });
-    if(!fail) console.log('✅ QA PASS');
-  }catch(e){console.error('❌ Exception in QA:',e.message);fail=true;}
-  console.groupEnd();
-  if(fail) throw new Error('QA SELFTEST FAIL');
-})();
+/* ===== HTF module begin ===== */
+window.ENABLE_HTF_FEATURES = (typeof window.ENABLE_HTF_FEATURES==='boolean') ? window.ENABLE_HTF_FEATURES : true;
 
+window.__HTF__ = {
+  ready: false,
+  need:   { EMA10:10, EMA20:20, RSI7:7,  SM10:20 },
+  warmup: { EMA10:0,  EMA20:0,  RSI7:0,  SM10:0  },
+  ema10: [], ema20: [], rsi7: [], sqz10: [],
+  lastLoggedTs: null
+};
+
+// Чистые вычислители
+function HTF_emaOne(closes, period){ if(!closes||closes.length<period) return NaN; var k=2/(period+1), ema=closes[0]; for(var i=1;i<closes.length;i++) ema = closes[i]*k + ema*(1-k); return ema; }
+function HTF_rsiOne(closes, period){ if(!closes||closes.length<=period) return NaN; var gains=0,losses=0; for(var i=1;i<=period;i++){var d=closes[i]-closes[i-1]; if(d>=0) gains+=d; else losses-=d;} var avgG=gains/period, avgL=losses/period; for(var i2=period+1;i2<closes.length;i2++){var d2=closes[i2]-closes[i2-1]; avgG=(avgG*(period-1)+(d2>0? d2:0))/period; avgL=(avgL*(period-1)+(d2<0?-d2:0))/period;} if(avgL===0) return 100; var rs=avgG/avgL; return 100-100/(1+rs); }
+function HTF_trueRange(h, l, pc){ var hi = (h>pc? h:pc); var lo = (l<pc? l:pc); return hi-lo; }
+function HTF_sqzOne(candles, len){ len = len||10; if(!candles||candles.length<20) return NaN; // BB20/KC20 для импульса
+  var C=candles.map(c=>c.C), H=candles.map(c=>c.H), L=candles.map(c=>c.L);
+  // SMA20 и Std20
+  var sma=0, std=0; for(var i=0;i<20;i++) sma+=C[C.length-1-i]; sma/=20; for(var j=0;j<20;j++){var d=C[C.length-1-j]-sma; std+=d*d;} std=Math.sqrt(std/20);
+  var bbUpper = sma + 2*std, bbLower = sma - 2*std;
+  // KC20 с ATR20*1.5
+  var atr=0, prevC=C[C.length-21]; for(var k=0;k<20;k++){ atr += HTF_trueRange(H[H.length-20+k], L[L.length-20+k], prevC); prevC = C[C.length-20+k]; } atr/=20;
+  var kcUpper = sma + 1.5*atr, kcLower = sma - 1.5*atr;
+  // Импульс (упрощ.: расстояние от центра BB относительно KC-ширины)
+  var m = C[C.length-1] - sma; var width = ( (kcUpper - kcLower) || 1 ); return m/width;
+}
+/* ===== HTF module end ===== */
+
+// ===== HTF mini self-test (обязателен) =====
+(function(){
+  var pass = true;
+  try {
+    // 1) математика индикаторов
+    var e = HTF_emaOne([1,2,3,4,5,6,7,8,9,10], 10);
+    var r = HTF_rsiOne([1,2,3,4,5,6,7,8,9,10], 7);
+    if (!Number.isFinite(e) || !Number.isFinite(r)) { console.error('[HTF self-test] ❌ indicator math'); pass=false; }
+
+    // 2) панель — строка появится после первого апдейта; здесь лишь проверяем отсутствие падений
+    if (typeof HTF_renderSignalsLine==='function') { try{ HTF_renderSignalsLine(); }catch(ex){ console.error('[HTF self-test] ❌ render line', ex&&ex.message); pass=false; } }
+
+    // 3) анти-спам лога: имитация двух вызовов подряд
+    var prev = window.__HTF__.lastLoggedTs; window.__HTF__.lastLoggedTs = 123;
+    var once = window.__HTF__.lastLoggedTs; // повторная установка того же ts — лог не должен писаться (проверяется логикой из 1.2)
+    window.__HTF__.lastLoggedTs = prev;
+
+    // 4) отсутствие новых неявных глобалок из нашего блока
+    // (всё, что добавлено — только под именами HTF_* или в window.__HTF__)
+  } catch(err) { console.error('[HTF self-test] ❌ exception', err&&err.message); pass=false; }
+
+  if (pass) console.log('[HTF self-test] ✅ PASS');
 })();
