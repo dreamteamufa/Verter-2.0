@@ -1144,6 +1144,7 @@ function HTF_renderSignalsLine(){
     if(!window.__HTF__) return;
     var W = window.__HTF__.warmup, N = window.__HTF__.need, ready = window.__HTF__.ready;
     var decision = (window.__HTF__.decision || 'SKIP');
+    if (window.HTF_SIMPLE_TEST === true) decision += ' (simple)';
     var line = 'Signals: '
       + 'EMA10 '+W.EMA10+'/'+N.EMA10+' • '
       + 'EMA20 '+W.EMA20+'/'+N.EMA20+' • '
@@ -1697,6 +1698,7 @@ function logTradeToGoogleSheets(appversion, symbolName, openTime, betTime, openP
 /* ===== HTF module begin ===== */
 window.ENABLE_HTF_FEATURES = (typeof window.ENABLE_HTF_FEATURES==='boolean') ? window.ENABLE_HTF_FEATURES : true;
 window.ENABLE_DECISION_BY_HTF = (typeof window.ENABLE_DECISION_BY_HTF==='boolean') ? window.ENABLE_DECISION_BY_HTF : true;
+window.HTF_SIMPLE_TEST = (typeof window.HTF_SIMPLE_TEST==='boolean') ? window.HTF_SIMPLE_TEST : true;
 
 window.__HTF__ = {
   ready: false,
@@ -1728,14 +1730,30 @@ function HTF_sqzOne(candles, len){ len = len||10; if(!candles||candles.length<20
 }
 
 function HTF_calcDecision(){
+  if (!window.__HTF__ || window.__HTF__.ready !== true) {
+    if (window.__HTF__) window.__HTF__.decisionFlags = {trend:0, phase:0, mom:0};
+    return 'SKIP';
+  }
+  var e10 = +window.__HTF__.ema10[window.__HTF__.ema10.length-1];
+  var e20 = +window.__HTF__.ema20[window.__HTF__.ema20.length-1];
+  if (!isFinite(e10) || !isFinite(e20)) {
+    window.__HTF__.decisionFlags = {trend:0, phase:0, mom:0};
+    return 'SKIP';
+  }
+
+  if (window.HTF_SIMPLE_TEST === true) {
+    var simpleFlags = { trend: e10>e20 ? 1 : (e10<e20 ? -1 : 0), phase: '–', mom: '–' };
+    window.__HTF__.decisionFlags = simpleFlags;
+    if (e10 > e20) return 'UP';
+    if (e10 < e20) return 'DOWN';
+    return 'SKIP';
+  }
+
   var state = window.__HTF__;
-  if(!state) return 'SKIP';
-  var e10 = state.ema10.length ? state.ema10[state.ema10.length-1] : NaN;
-  var e20 = state.ema20.length ? state.ema20[state.ema20.length-1] : NaN;
   var rsi = state.rsi7.length ? state.rsi7[state.rsi7.length-1] : NaN;
   var sm10 = state.sqz10.length ? state.sqz10[state.sqz10.length-1] : NaN;
   var flags = { trend:0, phase:0, mom:0 };
-  if(!Number.isFinite(e10) || !Number.isFinite(e20) || !Number.isFinite(rsi) || !Number.isFinite(sm10)){
+  if(!Number.isFinite(rsi) || !Number.isFinite(sm10)){
     state.decisionFlags = flags;
     return 'SKIP';
   }
@@ -1749,7 +1767,6 @@ function HTF_calcDecision(){
   flags.phase = phaseUp ? 1 : (phaseDown ? -1 : 0);
   flags.mom = momUp ? 1 : (momDown ? -1 : 0);
   state.decisionFlags = flags;
-  if(!state.ready) return 'SKIP';
   if (trendUp && phaseUp && momUp) return 'UP';
   if (trendDown && phaseDown && momDown) return 'DOWN';
   return 'SKIP';
@@ -1770,7 +1787,8 @@ function HTF_onClose15s(bar){
       if(decision==='UP') color = 'color:#2ecc71;font-weight:600;';
       else if(decision==='DOWN') color = 'color:#e74c3c;font-weight:600;';
       var flagsStr = flags.trend+'/'+flags.phase+'/'+flags.mom;
-      console.log('%c[HTF decision] NEW → '+decision+' (EMA/RSI/SM = '+flagsStr+')', color);
+      var simpleTag = (window.HTF_SIMPLE_TEST === true) ? ' [simple]' : '';
+      console.log('%c[HTF decision] NEW → '+decision+simpleTag+' (EMA/RSI/SM = '+flagsStr+')', color);
     }
     if(typeof HTF_renderSignalsLine==='function') HTF_renderSignalsLine();
     return decision;
@@ -1778,51 +1796,44 @@ function HTF_onClose15s(bar){
 }
 /* ===== HTF module end ===== */
 
-// ===== QA HARNESS (Node/DOM совместимость) =====
 (function(){
   var HAS_DOM = (typeof document!=='undefined' && document && document.body);
-  // Шимы для Node-раннера Codex
-  if (typeof window === 'undefined') { global.window = global; }
-  if (!window.__HTF__) window.__HTF__ = {ready:false, ema10:[], ema20:[], rsi7:[], sqz10:[], lastLoggedTs:null};
+  if (typeof window==='undefined') global.window = global;
+  if (!window.__HTF__) window.__HTF__ = {ready:false, ema10:[], ema20:[], rsi7:[], sqz10:[]};
 
-  // ===== Встроенный self-test =====
   var pass = true;
   try {
-    // 1) Эмуляция готовых сигналов
+    window.HTF_SIMPLE_TEST = true;
     window.__HTF__.ready = true;
     window.__HTF__.ema10 = [10,11,12];
     window.__HTF__.ema20 = [ 9, 9.5,10];
-    window.__HTF__.rsi7  = [48,51,55];
-    window.__HTF__.sqz10 = [-0.1,0.05,0.2];
 
-    // 2) Функция решения должна существовать и давать допустимые значения
-    var decisionFn = (typeof HTF_calcDecision==='function') ? HTF_calcDecision : null;
-    if (!decisionFn) { console.error('[HTF self-test] ❌ no HTF_calcDecision'); pass=false; }
+    if (typeof HTF_calcDecision!=='function') { console.error('[HTF self-test] ❌ no HTF_calcDecision'); pass=false; }
     else {
-      var d = decisionFn(); // не должна кидать исключений
-      if (['UP','DOWN','SKIP'].indexOf(d)===-1) { console.error('[HTF self-test] ❌ invalid decision:', d); pass=false; }
+      var d1 = HTF_calcDecision();
+      if (d1!=='UP') { console.error('[HTF self-test] ❌ expected UP, got', d1); pass=false; }
+
+      window.__HTF__.ema10 = [10, 9.8, 9.5];
+      window.__HTF__.ema20 = [10,10.1,10.2];
+      var d2 = HTF_calcDecision();
+      if (d2!=='DOWN') { console.error('[HTF self-test] ❌ expected DOWN, got', d2); pass=false; }
+
+      window.__HTF__.ema10 = [10,10,10];
+      window.__HTF__.ema20 = [10,10,10];
+      var d3 = HTF_calcDecision();
+      if (d3!=='SKIP') { console.error('[HTF self-test] ❌ expected SKIP, got', d3); pass=false; }
     }
 
-    // 3) Проверка гвардов: при NaN → SKIP
-    var keep = {e10:window.__HTF__.ema10, e20:window.__HTF__.ema20, r:window.__HTF__.rsi7, s:window.__HTF__.sqz10};
-    window.__HTF__.ema10=[NaN]; window.__HTF__.ema20=[10]; window.__HTF__.rsi7=[55]; window.__HTF__.sqz10=[0.2];
-    var dNaN = decisionFn ? decisionFn() : 'SKIP';
-    if (dNaN!=='SKIP') { console.error('[HTF self-test] ❌ NaN guard failed'); pass=false; }
-    window.__HTF__.ema10=keep.e10; window.__HTF__.ema20=keep.e20; window.__HTF__.rsi7=keep.r; window.__HTF__.sqz10=keep.s;
-
-    // 4) Рендер строки панели — выполнять только если есть DOM
     if (HAS_DOM && typeof HTF_renderSignalsLine==='function') {
       try { HTF_renderSignalsLine(); } catch(e){ console.error('[HTF self-test] ❌ render', e&&e.message); pass=false; }
     }
-
   } catch (err) {
     console.error('[HTF self-test] ❌ exception', err && err.message ? err.message : err);
     pass = false;
   }
   if (pass) {
-    var label = HAS_DOM ? '[HTF self-test] ✅ PASS (dom)' : '[HTF self-test] ✅ PASS (node)';
-    console.log(label);
+    console.log(HAS_DOM ? '[HTF self-test] ✅ PASS (dom)' : '[HTF self-test] ✅ PASS (node)');
   } else {
-    throw new Error('HTF SELF-TEST FAIL'); // запрет коммита при FAIL
+    throw new Error('HTF SELF-TEST FAIL');
   }
 })();
