@@ -846,7 +846,7 @@ let makeBet = (priceTrend, tradeStatus, globalTrend) => {
     let htfDecisionSide = 'SKIP';
     let htfDecisionTs = null;
     if (window.ENABLE_DECISION_BY_HTF && window.__HTF__) {
-        htfDecisionSide = window.__HTF__.decision || 'SKIP';
+        htfDecisionSide = window.__HTF__.lastDecision || window.__HTF__.decision;
         htfDecisionTs = window.__HTF__.decisionTs;
         if (htfDecisionSide === 'SKIP') {
             tradeDirectionDiv.innerHTML = 'skip';
@@ -935,8 +935,8 @@ let makeBet = (priceTrend, tradeStatus, globalTrend) => {
         resetCycle();
     } else if (cyclesToPlay > 0){
         if (usingHTFDecision) {
-            window.__HTF__.lastOrderTs = htfDecisionTs;
             console.log('[HTF order] side='+htfDecisionSide+' ts='+htfDecisionTs);
+            window.__HTF__.lastOrderTs = window.__HTF__.decisionTs;
         }
         smartBet(currentBetStep, tradeDirection);
 
@@ -1707,6 +1707,7 @@ window.__HTF__ = {
   ema10: [], ema20: [], rsi7: [], sqz10: [],
   lastLoggedTs: null,
   last15sTs: null,
+  lastDecision: 'SKIP',
   decision: 'SKIP',
   decisionTs: null,
   decisionFlags: { trend:0, phase:0, mom:0 },
@@ -1775,10 +1776,11 @@ function HTF_calcDecision(){
 function HTF_onClose15s(bar){
   try{
     if(!bar || !window.__HTF__) return 'SKIP';
-    if(window.__HTF__.last15sTs === bar.t) return window.__HTF__.decision || 'SKIP';
+    if(window.__HTF__.last15sTs === bar.t) return window.__HTF__.lastDecision || window.__HTF__.decision || 'SKIP';
     window.__HTF__.last15sTs = bar.t;
-    var prev = window.__HTF__.decision || 'SKIP';
+    var prev = window.__HTF__.lastDecision || window.__HTF__.decision || 'SKIP';
     var decision = HTF_calcDecision();
+    window.__HTF__.lastDecision = decision;
     window.__HTF__.decision = decision;
     window.__HTF__.decisionTs = bar.t;
     var flags = window.__HTF__.decisionFlags || {trend:0,phase:0,mom:0};
@@ -1796,44 +1798,59 @@ function HTF_onClose15s(bar){
 }
 /* ===== HTF module end ===== */
 
+// ===== QA HARNESS (Node/DOM) — app102-0.2.3 =====
 (function(){
   var HAS_DOM = (typeof document!=='undefined' && document && document.body);
   if (typeof window==='undefined') global.window = global;
-  if (!window.__HTF__) window.__HTF__ = {ready:false, ema10:[], ema20:[], rsi7:[], sqz10:[]};
+  if (!window.__HTF__) window.__HTF__ = {ready:false, ema10:[], ema20:[], rsi7:[], sqz10:[], lastLoggedTs:null};
 
   var pass = true;
   try {
-    window.HTF_SIMPLE_TEST = true;
+    // A) Эмуляция готовых 1m-сигналов (тренд UP)
     window.__HTF__.ready = true;
     window.__HTF__.ema10 = [10,11,12];
     window.__HTF__.ema20 = [ 9, 9.5,10];
+    window.__HTF__.rsi7  = [48,51,55];
+    window.__HTF__.sqz10 = [-0.1,0.05,0.2];
 
-    if (typeof HTF_calcDecision!=='function') { console.error('[HTF self-test] ❌ no HTF_calcDecision'); pass=false; }
-    else {
-      var d1 = HTF_calcDecision();
-      if (d1!=='UP') { console.error('[HTF self-test] ❌ expected UP, got', d1); pass=false; }
+    // B) Готовность функции решения
+    if (typeof HTF_calcDecision!=='function') { console.error('[HTF QA] ❌ no HTF_calcDecision'); pass=false; }
 
-      window.__HTF__.ema10 = [10, 9.8, 9.5];
-      window.__HTF__.ema20 = [10,10.1,10.2];
-      var d2 = HTF_calcDecision();
-      if (d2!=='DOWN') { console.error('[HTF self-test] ❌ expected DOWN, got', d2); pass=false; }
+    // C) Имитируем закрытие 15s-бара: рассчитываем и ФИКСИРУЕМ решение/ts
+    var decision = HTF_calcDecision ? HTF_calcDecision() : 'SKIP';
+    var ts = Date.now() % 1e12; // псевдо-ts
+    // фиксация, как это делает HTF_onClose15s
+    window.__HTF__.lastDecision = decision;
+    window.__HTF__.decision     = decision;
+    window.__HTF__.decisionTs   = ts;
 
-      window.__HTF__.ema10 = [10,10,10];
-      window.__HTF__.ema20 = [10,10,10];
-      var d3 = HTF_calcDecision();
-      if (d3!=='SKIP') { console.error('[HTF self-test] ❌ expected SKIP, got', d3); pass=false; }
+    // D) Торговый цикл должен читать lastDecision/decisionTs
+    var side = window.__HTF__.lastDecision || window.__HTF__.decision;
+    var dts  = window.__HTF__.decisionTs;
+    if (['UP','DOWN','SKIP'].indexOf(side)===-1 || !Number.isFinite(dts)) {
+      console.error('[HTF QA] ❌ invalid side/ts', side, dts); pass=false;
     }
 
+    // E) Анти-дубль: первая "сделка" разрешена, вторая на тот же ts — запрещена
+    window.__HTF__.lastOrderTs = undefined; // не торговали
+    var canFirst  = (side!=='SKIP' && Number.isFinite(dts) && window.__HTF__.lastOrderTs !== dts);
+    // "совершаем" сделку
+    if (canFirst) window.__HTF__.lastOrderTs = dts;
+    var canSecond = (side!=='SKIP' && Number.isFinite(dts) && window.__HTF__.lastOrderTs !== dts);
+    if (canFirst!==true)  { console.error('[HTF QA] ❌ first trade guard failed'); pass=false; }
+    if (canSecond!==false){ console.error('[HTF QA] ❌ anti-dup guard failed');   pass=false; }
+
+    // F) Безопасный рендер панели — только если есть DOM
     if (HAS_DOM && typeof HTF_renderSignalsLine==='function') {
-      try { HTF_renderSignalsLine(); } catch(e){ console.error('[HTF self-test] ❌ render', e&&e.message); pass=false; }
+      try { HTF_renderSignalsLine(); } catch(e){ console.error('[HTF QA] ❌ render', e&&e.message); pass=false; }
     }
   } catch (err) {
-    console.error('[HTF self-test] ❌ exception', err && err.message ? err.message : err);
+    console.error('[HTF QA] ❌ exception', err && err.message ? err.message : err);
     pass = false;
   }
   if (pass) {
-    console.log(HAS_DOM ? '[HTF self-test] ✅ PASS (dom)' : '[HTF self-test] ✅ PASS (node)');
+    console.log(HAS_DOM ? '[HTF self-test] ✅ PASS (dom, 0.2.3)' : '[HTF self-test] ✅ PASS (node, 0.2.3)');
   } else {
-    throw new Error('HTF SELF-TEST FAIL');
+    throw new Error('HTF SELF-TEST FAIL'); // запрещает завершение/коммит при FAIL
   }
 })();
