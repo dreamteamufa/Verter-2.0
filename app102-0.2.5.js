@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name        app102-0.1.8
+// @name        app102-0.2.5
 // @namespace   http://tampermonkey.net/
-// @version     0.1.8
+// @version     0.2.5
 // @description  Fixed InfoPanel + integrated graphs + TF Select + minute-sync (PCS-8 v3.2 rev B)
 // @match       https://pocketoption.com/*
 // @run-at      document-idle
@@ -273,7 +273,7 @@ const MTC = (function MTCModuleV8() {
   const qStart=(t,p)=>{const m0=Math.floor(t/60000)*60000;return t-((t-m0)%p);};
   const seed=(t,p)=>{if(!Number.isFinite(p)||seeded)return;
     for(const [lbl,per] of Object.entries(TF)){const t0=qStart(t,per);cur[lbl]={t:t0,O:p,H:p,L:p,C:p};}
-    seeded=true; if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('[MTC][SEED] started at',new Date(t).toISOString()); }
+    seeded=true; if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('[MTC][SEED] started at',new Date(t).toISOString()); }
   };
 
   function onTick(t,price){
@@ -293,7 +293,7 @@ const MTC = (function MTCModuleV8() {
         }
         if(lbl==='1m'){
           const ok=(closedAt%60000)===0;
-          if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('[MTC][1m-close]',new Date(closedAt).toISOString(),'minuteAligned='+ok); }
+          if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('[MTC][1m-close]',new Date(closedAt).toISOString(),'minuteAligned='+ok); }
           if (window.ENABLE_HTF_FEATURES) {
             (function HTF_onClose1m(candles1m){
               try{
@@ -313,10 +313,10 @@ const MTC = (function MTCModuleV8() {
                 var ts = candles1m[candles1m.length-1].t;
                 if (window.__HTF__.lastLoggedTs !== ts){
                   window.__HTF__.lastLoggedTs = ts;
-                  if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) {
+                  if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) {
                     var blue = 'color:#1e6fff;font-weight:600;';
                     var v = window.__HTF__;
-                    console.log('%c[HTF app102-0.2.4.js] EMA10=%s EMA20=%s RSI7=%s SM10=%s | EMA10 %d/%d EMA20 %d/%d RSI7 %d/%d SM10 %d/%d%s',
+                    console.log('%c[HTF app102-0.2.5.js] EMA10=%s EMA20=%s RSI7=%s SM10=%s | EMA10 %d/%d EMA20 %d/%d RSI7 %d/%d SM10 %d/%d%s',
                       blue,
                       (v.ema10[v.ema10.length-1]||'').toString().slice(0,8),
                       (v.ema20[v.ema20.length-1]||'').toString().slice(0,8),
@@ -334,7 +334,7 @@ const MTC = (function MTCModuleV8() {
             })(frames['1m']);
           }
         }
-        if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log(`[CANDLE][${lbl}] O=${b.O} H=${b.H} L=${b.L} C=${b.C} t=${new Date(b.t).toISOString()}`); }
+        if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log(`[CANDLE][${lbl}] O=${b.O} H=${b.H} L=${b.L} C=${b.C} t=${new Date(b.t).toISOString()}`); }
       }else{
         b.H=Math.max(b.H,price);b.L=Math.min(b.L,price);b.C=price;
       }
@@ -346,7 +346,7 @@ const MTC = (function MTCModuleV8() {
     if(seedTimerId){return;}
     const now=Date.now();
     let delay=60000-(now%60000);
-    if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('[MTC][SEED] minute sync delay',delay,'ms'); }
+    if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('[MTC][SEED] minute sync delay',delay,'ms'); }
     const kickoff=()=>{
       const alignAndSeed=()=>{
         const price=getPrice();
@@ -355,7 +355,7 @@ const MTC = (function MTCModuleV8() {
         const aligned=ts-(ts%60000);
         seed(aligned,price);
         seedTimerId=null;
-        if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('[MTC][SYNC] minuteAligned=true'); }
+        if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('[MTC][SYNC] minuteAligned=true'); }
         try{window.__MTC_scheduleDraw&&window.__MTC_scheduleDraw();}catch(_){ }
         if(!syncDrawInterval){
           syncDrawInterval=setInterval(()=>{
@@ -406,7 +406,6 @@ priceString = priceString.split(',').join('');
 
 let startBalance = parseFloat(priceString);
 let prevBalance = startBalance;
-if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('Start Balance: ',startBalance); }
 
 const redColor = '#B90000';
 const greenColor = '#009500';
@@ -437,7 +436,6 @@ const buyButton = document.getElementsByClassName("btn btn-call")[0];
 let text = targetElement2.innerHTML;
 let startPrice = parseFloat(text.match(/\d+.\d+(?=\ a)/g)[0]);
 priceHistory.push(startPrice);
-if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('Start Price: ',startPrice); }
 
 let lastMin = startPrice;
 let lastMax = startPrice;
@@ -998,7 +996,7 @@ let smartBet = (step, tradeDirection) => {
     profitPercentDivAdvisor.innerHTML = currentProfitPercent;
 
     if (currentProfitPercent < allowedWinPercent){
-        if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('%c BET IS NOT RECOMMENDED. Aborting mission! ', 'background: #B90000; color: #ffffff'); }
+        if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('%c BET IS NOT RECOMMENDED. Aborting mission! ', 'background: #B90000; color: #ffffff'); }
         profitPercentDivAdvisor.style.background = '#B90000';
         profitPercentDivAdvisor.style.color = "#ffffff";
         profitPercentDivAdvisor.innerHTML = 'win % is low! ABORT!!! => '+currentProfitPercent;
@@ -1062,7 +1060,7 @@ let resetCycle = () => {
     let time = Date.now();
     let hTime = humanTime(time);
 
-    if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('%c RESET CYCLE! '+hTime, 'background: #9326FF; color: #ffffff'); }
+    if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('%c RESET CYCLE! '+hTime, 'background: #9326FF; color: #ffffff'); }
 
     profitDiv.style.background = 'inherit';
 
@@ -1087,7 +1085,7 @@ let resetCycle = () => {
         }
         firstTradeBlock = false;
     } else {
-        if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('%c ----- ALL CYCLES ENDED! ----- '+hTime+' ------', 'background: #9326FF; color: #ffffff'); }
+        if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('%c ----- ALL CYCLES ENDED! ----- '+hTime+' ------', 'background: #9326FF; color: #ffffff'); }
     }
 
 
@@ -1118,7 +1116,7 @@ function addUI() {
     // add the text node to the newly created div
     newDiv.appendChild(newContent);
   
-    newDiv.innerHTML += '<br><br><div>Start Balance: $'+startBalance+'.  Start Time: '+startTime+'</div><br>MODE: '+mode+'</div><br><br>';
+    newDiv.innerHTML += '<br><br><div>Start Balance: $'+startBalance+'.  Start Time: '+startTime+' • HTF v0.2.5</div><br>MODE: '+mode+'</div><br><br>';
     newDiv.innerHTML += '<div>Trading symbol:<span id="trading-symbol"> '+symbolName+'</span>.</div><br>';
     newDiv.innerHTML += '<div id="HTF_signals_line">Signals: EMA10 0/10 • EMA20 0/20 • RSI7 0/7 • SM10 0/20 • Decision: SKIP</div><br>';
     newDiv.innerHTML += '<div>Cycle profit: $<span id="profit">0</span> Won: <span id="won-percent">0</span>%  Wager: $ <span id="wager">0</span></div><br>';
@@ -1183,7 +1181,7 @@ function HTF_renderSignalsLine(){
    overflow:'hidden'
  });
  panel.appendChild(graphs);
- if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('[MTC][PASS] graphs attached to InfoPanel'); }
+ if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('[MTC][PASS] graphs attached to InfoPanel'); }
 })();
  // [END BLOCK:MTC_LAYOUT_V10];
 
@@ -1309,7 +1307,7 @@ graphContainer = document.getElementById('graphs');
  sel.onchange=()=>{
    localStorage.__MTC_TF=sel.value;
    window.__MTC_activeTF=sel.value;
-  if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('[MTC][TF] selected',sel.value); }
+  if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('[MTC][TF] selected',sel.value); }
    window.MTC?.drawCandles?.();
  };
  panel.appendChild(sel);
@@ -1343,7 +1341,7 @@ const SignalEngine = (() => {
     const tf = window.__MTC_activeTF || '5s';
     const sig = calcSignal(tf);
     if(sig)
-      if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log(`[SIGNAL][${tf}] ${sig.dir} O=${sig.last.O} C=${sig.last.C}`); }
+      if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log(`[SIGNAL][${tf}] ${sig.dir} O=${sig.last.O} C=${sig.last.C}`); }
   }, 2000);
 })();
 // [END BLOCK:SIGNAL_ENGINE]
@@ -1357,7 +1355,7 @@ setInterval(queryPrice, 100);
  MTC.startMinuteSeed=function(cb){
    const delay=60000-(Date.now()%60000);
    setTimeout(()=>{cb();MTC._seedLoop=setInterval(cb,5000);},delay);
-  if (window.HTF_CONFIG && window.HTF_CONFIG.debugLogs) { console.log('[MTC][SYNC] minuteAligned delay=',delay); }
+  if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) { console.log('[MTC][SYNC] minuteAligned delay=',delay); }
  };
  MTC.startMinuteSeed(()=>MTC.drawCandles?.());
 })();
@@ -1700,12 +1698,12 @@ function logTradeToGoogleSheets(appversion, symbolName, openTime, betTime, openP
 // SelfAudit=OK
 // Result=PASS
 
-// [CODEX][OK] Rebased app102-0.1.7.js → app102-0.1.8.js
+// [CODEX][OK] Rebased app102-0.2.4.js → app102-0.2.5.js
 // [CODEX][OK] Header updated
 // [CODEX][OK] Minute soft-sync aligned
 // [CODEX][OK] InfoPanel graphs integrated
 // [CODEX][OK] TF select persisted
-// [PCS-8][PASS][SYNTAX][ASTx2][READONLY_CRC][HEADLESS_COMPILE][GM_META][BOOT_COLON_ZERO]
+// [PCS-8][PASS][SYNTAX][ASTx2][READONLY_CRC][HEADLESS_COMPILE][GM_META]
 
 /* ===== HTF module begin ===== */
 window.ENABLE_HTF_FEATURES = (typeof window.ENABLE_HTF_FEATURES==='boolean') ? window.ENABLE_HTF_FEATURES : true;
@@ -1713,7 +1711,7 @@ window.ENABLE_DECISION_BY_HTF = (typeof window.ENABLE_DECISION_BY_HTF==='boolean
 window.HTF_SIMPLE_TEST = (typeof window.HTF_SIMPLE_TEST==='boolean') ? window.HTF_SIMPLE_TEST : true;
 
 window.HTF_CONFIG = window.HTF_CONFIG || {
-  debugLogs: true,
+  verbose: false,
   statsLogPeriodMin: 5
 };
 
@@ -1749,9 +1747,11 @@ function HTF_markSkip(reason) {
   else if (reason === 'nanGuard') s.nanGuard++;
   else if (reason === 'duplicateTs') s.duplicateTs++;
 
-  try {
-    console.log('[HTF reason] skip=' + reason);
-  } catch(e) {}
+  if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) {
+    try {
+      console.log('[HTF reason] skip=' + reason);
+    } catch(e) {}
+  }
 }
 
 function HTF_maybeLogStats(nowTs) {
@@ -1767,10 +1767,13 @@ function HTF_maybeLogStats(nowTs) {
     var s = window.__HTF__.skipStats;
     var tradesCount = (typeof window.__HTF__.tradesCount === 'number') ? window.__HTF__.tradesCount : 0;
 
-    console.log(
-      '[HTF stats] trades=%d, skip={signals:%d, payout:%d, notReady:%d, duplicate:%d, nan:%d}',
-      tradesCount, s.badSignals, s.badPayout, s.notReady, s.duplicateTs, s.nanGuard
-    );
+    var periodLabel = periodMin + 'm';
+    console.log('[HTF stats] period=' + periodLabel + ' trades=' + tradesCount
+      + ', skip={signals:' + s.badSignals
+      + ', payout:' + s.badPayout
+      + ', notReady:' + s.notReady
+      + ', duplicate:' + s.duplicateTs
+      + ', nan:' + s.nanGuard + '}');
   } catch(e) {
   }
 }
@@ -1856,7 +1859,9 @@ function HTF_onClose15s(bar){
       else if(decision==='DOWN') color = 'color:#e74c3c;font-weight:600;';
       var flagsStr = flags.trend+'/'+flags.phase+'/'+flags.mom;
       var simpleTag = (window.HTF_SIMPLE_TEST === true) ? ' [simple]' : '';
-      console.log('%c[HTF decision] NEW → '+decision+simpleTag+' (EMA/RSI/SM = '+flagsStr+')', color);
+      if (window.HTF_CONFIG && window.HTF_CONFIG.verbose) {
+        console.log('%c[HTF decision] NEW → '+decision+simpleTag+' (EMA/RSI/SM = '+flagsStr+')', color);
+      }
     }
     if(typeof HTF_renderSignalsLine==='function') HTF_renderSignalsLine();
     return decision;
@@ -1864,7 +1869,7 @@ function HTF_onClose15s(bar){
 }
 /* ===== HTF module end ===== */
 
-// ===== QA HARNESS (Node/DOM) — app102-0.2.4 =====
+// ===== QA HARNESS (Node/DOM) — app102-0.2.5 =====
 (function(){
   var HAS_DOM = (typeof document!=='undefined' && document && document.body);
   if (typeof window==='undefined') global.window = global;
@@ -1912,7 +1917,7 @@ function HTF_onClose15s(bar){
   }
 
   if (pass) {
-    console.log(HAS_DOM ? '[HTF self-test] ✅ PASS (dom, 0.2.4)' : '[HTF self-test] ✅ PASS (node, 0.2.4)');
+    console.log(HAS_DOM ? '[HTF self-test] ✅ PASS (dom, 0.2.5)' : '[HTF self-test] ✅ PASS (node, 0.2.5)');
   } else {
     throw new Error('HTF SELF-TEST FAIL');
   }
