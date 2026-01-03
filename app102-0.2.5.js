@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name        app102-0.1.8
+// @name        app102-0.2.5
 // @namespace   http://tampermonkey.net/
-// @version     0.1.8
-// @description  Fixed InfoPanel + integrated graphs + TF Select + minute-sync (PCS-8 v3.2 rev B)
+// @version     0.2.5
+// @description  app102-0.2.5: Fixed InfoPanel + integrated graphs + TF Select + minute-sync (PCS-8 v3.2 rev B)
 // @match       https://pocketoption.com/*
 // @run-at      document-idle
 // ==/UserScript==
@@ -12,7 +12,7 @@ const mode = 'DEMO';
 
 const allowedWinPercent = 85;
 
-const appversion = "Terminator ver. 102 sqzMom";
+const appversion = "app102-0.2.5.js";
 const reverse = false; // Change to true for reverse mode
 const antiMartingale = false; // Change to true for anti-martingale mode
 // const webhookUrl = 'https://script.google.com/macros/s/AKfycbyz--BcEvGJq05MN5m9a6uGiUUhYe8WrpxOKMWE6qstfj15j9L8ahnK7DaVWaSbPAPG/exec'; //A1
@@ -1698,7 +1698,7 @@ function logTradeToGoogleSheets(appversion, symbolName, openTime, betTime, openP
 // SelfAudit=OK
 // Result=PASS
 
-// [CODEX][OK] Rebased app102-0.1.7.js → app102-0.1.8.js
+// [CODEX][OK] Rebased to app102-0.2.5.js
 // [CODEX][OK] Header updated
 // [CODEX][OK] Minute soft-sync aligned
 // [CODEX][OK] InfoPanel graphs integrated
